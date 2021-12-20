@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      .bordered-container {
+        display: flex;
+        border: black solid 2px;
+        padding: 5px;
+        gap: 10px;
+        background-color: white;
+      }
+      .bordered-container:hover {
+        background-color: #eee;
+      }
+      .container {
+        display: flex;
+        padding: 5px;
+        gap: 10px;
+      }
+      .title {
+        display: grid;
+        grid-template-columns: 35px 5px auto;
+        grid-template-areas: 'label . text';
+      }
+      .title-label {
+        grid-area: label;
+        align-self: center;
+      }
+      .title-text {
+        grid-area: text;
+        align-self: center;
+      }
+      .editor-imagen {
+        background-color: lightseagreen;
+        width: 600px;
+        height: 400px;
+      }
+      .button {
+        border: #767676 solid 1px;
+        border-radius: 3px;
+        padding: 3px 7px;
+        background-color: #efefef;
+        font-family: sans-serif;
+        font-size: small;
+      }
+      .button:hover {
+        border: #4f4f4f solid 1px;
+        background-color: #e5e5e5;
+      }
+      .close {
+        border: #4f4f4f solid 2px;
+        border-radius: 3px;
+        background-color: #f55;
+        color: white;
+        font-weight: bold;
+      }
+      .close:hover {
+        border: black solid 2px;
+        background-color: #f22;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" class="container" style="flex-direction: column">
+      <manual-section
+        v-for="(section, index) in sectionList.items"
+        :id="section.id"
+        :key="section.id"
+        :index="index"
+        :items="section.items"
+        @add-item="addItem"
+        @delete-item="deleteItem"
+        @update-item="updateItem"
+      ></manual-section>
+      <div class="container" style="justify-content: center">
+        <button @click="addSection()">Add Section</button>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script>
+      class ManualParagraph {
+        constructor(id) {
+          this.id = id;
+          this.content = '';
+          this.type = 'paragraph';
+        }
+        update(newContent) {
+          this.content = newContent;
+        }
+      }
+
+      class ManualDetail {
+        constructor(id) {
+          this.id = id;
+          this.content = '';
+          this.type = 'detail';
+        }
+        update(newContent) {
+          this.content = newContent;
+        }
+      }
+
+      class ManualImage {
+        constructor(id) {
+          this.id = id;
+          this.name = '';
+          this.nextItem = 1;
+          this.items = [];
+          this.type = 'image';
+        }
+        addItem() {
+          const detail = new ManualDetail(`${this.id}.${this.nextItem}`);
+          this.nextItem += 1;
+          this.items.push(detail);
+          return detail;
+        }
+        deleteItem(index) {
+          this.items.splice(index, 1);
+        }
+        update(newName) {
+          this.name = newName;
+        }
+      }
+
+      class ManualSection {
+        constructor(id) {
+          this.id = id;
+          this.title = '';
+          this.nextItem = 1;
+          this.items = [];
+          this.type = 'section';
+        }
+        addItem(type) {
+          let item;
+          const itemId = `${this.id}.${this.nextItem}`;
+          this.nextItem += 1;
+          if (type === 'paragraph') {
+            item = new ManualParagraph(itemId);
+          } else if (type === 'image') {
+            item = new ManualImage(itemId);
+          } else {
+            item = new ManualSection(itemId);
+          }
+          this.items.push(item);
+          return item;
+        }
+        deleteItem(index) {
+          this.items.splice(index, 1);
+        }
+        update(newTitle) {
+          this.title = newTitle;
+        }
+      }
+
+      class ManualSectionList {
+        constructor() {
+          this.nextItem = 1;
+          this.items = [];
+        }
+        addItem() {
+          const section = new ManualSection(`${this.nextItem}`);
+          this.nextItem += 1;
+          this.items.push(section);
+          return section;
+        }
+        deleteItem(index) {
+          this.items.splice(index, 1);
+        }
+      }
+
+      Vue.component('manual-paragraph', {
+        template: `
+        <div
+          class="bordered-container"
+          style="flex-direction: column; border-color: red"
+        >
+          <div class="container" style="justify-content: flex-end">
+            <button class="close" @click="deleteParagraph">X</button>
+          </div>
+          <textarea rows="5" @change="updateParagraph" v-model="content">
+          </textarea>
+        </div>
+        `,
+        props: {
+          id: {type: String, required: true},
+          index: {type: Number, required: true},
+        },
+        data() {
+          return {content: ''};
+        },
+        methods: {
+          deleteParagraph() {
+            this.$emit('delete-item', this.id, this.index);
+          },
+          updateParagraph() {
+            this.$emit('update-item', this.id, this.content);
+          },
+        },
+      });
+
+      Vue.component('manual-detail', {
+        template: `
+        <div
+          class="bordered-container"
+          style="flex-direction: column; border-color: orange"
+        >
+          <div class="container" style="justify-content: flex-end">
+            <button class="close" @click="deleteDetail">X</button>
+          </div>
+          <div class="container">
+            <div style="width: 20px">{{index + 1}}</div>
+            <textarea rows="5" @change="updateDetail" v-model="content">
+            </textarea>
+          </div>
+        </div>
+        `,
+        props: {
+          id: {type: String, required: true},
+          index: {type: Number, required: true},
+        },
+        data() {
+          return {
+            content: '',
+          };
+        },
+        methods: {
+          deleteDetail() {
+            this.$emit('delete-item', this.id, this.index);
+          },
+          updateDetail() {
+            this.$emit('update-item', this.id, this.content);
+          },
+        },
+        computed: {},
+      });
+
+      Vue.component('manual-selector', {
+        template: `
+          <div class="container" style="flex-direction: column">
+            
+            <div class="container" style="justify-content: center">
+              <input
+                :id="inputFileId"
+                type="file"
+                accept="image/*"
+                ref="selector"
+                style="display: none"
+                @change="selectImage"
+              >
+              <label
+                :for="inputFileId"
+                class="button"
+              >Select Image</label>
+            </div>
+          </div>
+        `,
+        props: {
+          id: {type: String, required: true},
+        },
+        data() {
+          return {};
+        },
+        methods: {
+          async selectImage() {
+            const {files} = this.$refs.selector;
+            const image = files.length ? files[0] : null;
+            if (!image) {
+              return;
+            }
+            const formData = new FormData();
+            formData.append('image', image);
+            try {
+              const response = await axios.post('/images', formData, {
+                headers: {
+                  'Content-Type': 'multipart/form-data',
+                },
+              });
+              this.$emit('update-item', this.id, response.data.name);
+            } catch (error) {
+              console.log(error);
+            }
+          },
+        },
+        computed: {
+          inputFileId() {
+            return `inputfile${this.id}`;
+          },
+        },
+      });
+
+      Vue.component('manual-viewer', {
+        template: `
+          <div id="editimg" class="editor-imagen">Hola
+            <svg id="svg" width="100%" height="100%">
+              <line x1="-5" y1="50" x2="605" y2="50" style="stroke: red;stroke-width:2" />
+              <line x1="-5" y1="350" x2="605" y2="350" style="stroke: red;stroke-width:2" />
+              <image width="600" height="300" y="50" xlink:href="https://www.caracteristicas.co/wp-content/uploads/2017/02/pato-2-e1560917879703.jpg" clip-path="url(#circleView)" />
+            </svg>
+          </div>
+        `,
+        props: {
+          id: {type: String, required: true},
+          name: {type: String, required: true},
+          items: {type: Array, required: true},
+        },
+        data() {
+          return {};
+        },
+        methods: {},
+        computed: {},
+      });
+
+      Vue.component('manual-image', {
+        template: `
+          <div
+            class="bordered-container"
+            style="flex-direction: column; border-color: blue"
+          >
+            <div class="container" style="justify-content: flex-end">
+              <button class="close" @click="deleteItem(id, index)">X</button>
+            </div>
+            <manual-selector
+              v-if="!isSelected"
+              :id="id"
+              @update-item="updateItem"
+            >
+            </manual-selector>
+            <manual-viewer
+              v-show="isSelected"
+              :id="id"
+              :name="name"
+              :items="items"
+              @update-item="updateItem"
+            >
+            </manual-viewer>
+            <manual-detail 
+              v-for="(item, index) in items"
+              :id="item.id"
+              :key="item.id"
+              :index="index"
+              @delete-item="deleteItem"
+              @update-item="updateItem"
+            >
+            </manual-detail>
+          </div>
+        `,
+        props: {
+          id: {type: String, required: true},
+          name: {type: String, required: true},
+          items: {type: Array, required: true},
+          index: {type: Number, required: true},
+        },
+        data() {
+          return {};
+        },
+        methods: {
+          addItem(type, parentId) {
+            this.$emit('add-item', type, parentId);
+          },
+          deleteItem(id, index) {
+            this.$emit('delete-item', id, index);
+          },
+          updateItem(id, value) {
+            this.$emit('update-item', id, value);
+          },
+        },
+        computed: {
+          isSelected() {
+            return this.name !== '';
+          },
+        },
+      });
+
+      Vue.component('manual-section', {
+        template: `
+          <div class="bordered-container" style="flex-direction: column">
+            <div class="container" style="justify-content: flex-end">
+              <button class="close" @click="deleteItem(id, index)">X</button>
+            </div>
+            <div class="title">
+              <label class="title-label" :for="titleId">Title:</label>
+              <input
+                type="text"
+                class="title-text"
+                :id="titleId"
+                v-model="title"
+                @change="updateItem(id, title)">
+            </div>
+            <template v-for="(item, index) in items">
+              <manual-section
+                :items="item.items"
+                :id="item.id"
+                :key="item.id"
+                :index="index"
+                @add-item="addItem"
+                @delete-item="deleteItem"
+                @update-item="updateItem"
+                v-if = "item.type === 'section'"
+              ></manual-section>
+              <manual-paragraph
+                :id="item.id"
+                :key="item.id"
+                :index="index"
+                @delete-item="deleteItem"
+                @update-item="updateItem"
+                v-else-if = "item.type === 'paragraph'"
+              ></manual-paragraph>
+              <manual-image
+                :items="item.items"
+                :id="item.id"
+                :key="item.id"
+                :name="item.name"
+                :index="index"
+                @add-item="addItem"
+                @delete-item="deleteItem"
+                @update-item="updateItem"
+                v-else-if = "item.type === 'image'"
+              ></manual-image>
+            </template>
+            <div class="container" style="justify-content: center">
+              <button @click="addItem('paragraph', id)">
+                Add Paragraph
+              </button>
+              <button @click="addItem('image', id)">
+                Add Image
+              </button>
+              <button @click="addItem('section', id)">
+                Add Subsection
+              </button>
+            </div>
+          </div>
+        `,
+        props: {
+          id: {type: String, required: true},
+          items: {type: Array, required: true},
+          index: {type: Number, required: true},
+        },
+        data() {
+          return {title: ''};
+        },
+        methods: {
+          addItem(type, parentId) {
+            this.$emit('add-item', type, parentId);
+          },
+          deleteItem(id, index) {
+            this.$emit('delete-item', id, index);
+          },
+          updateItem(id, value) {
+            this.$emit('update-item', id, value);
+          },
+        },
+        computed: {
+          titleId() {
+            return 'title' + this.id;
+          },
+        },
+      });
+
+      const app = new Vue({
+        el: '#app',
+        data: {
+          sectionList: new ManualSectionList(),
+          allItems: {},
+        },
+        methods: {
+          addItem(type, parentId) {
+            const parent = this.allItems[parentId];
+            const newItem = parent.addItem(type);
+            this.allItems[newItem.id] = newItem;
+          },
+          addSection() {
+            const newSection = this.sectionList.addItem();
+            this.allItems[newSection.id] = newSection;
+          },
+          deleteChilds(item) {
+            if (!item.items || item.items.length === 0) {
+              return;
+            }
+            const queue = [...item.items];
+            let i;
+            while (queue.length > 0) {
+              i = queue.shift();
+              delete this.allItems[i.id];
+              if (i.items && i.items.length > 0) {
+                queue.push(...i.items);
+              }
+            }
+          },
+          deleteItem(id, index) {
+            const splittedId = id.split('.');
+            let parent;
+            if (splittedId.length === 1) {
+              parent = this.sectionList;
+            } else {
+              splittedId.pop();
+              parent = this.allItems[splittedId.join('.')];
+            }
+            const item = parent.items[index];
+            this.deleteChilds(item);
+            parent.deleteItem(index);
+            delete this.allItems[id];
+          },
+          updateItem(id, value) {
+            const item = this.allItems[id];
+            item.update(value);
+          },
+        },
+      });
+    </script>
+  </body>
+</html>
