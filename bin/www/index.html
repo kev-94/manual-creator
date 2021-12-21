@@ -39,6 +39,25 @@
         grid-area: text;
         align-self: center;
       }
+      .detail {
+        display: grid;
+        grid-template-columns: 40px 10px auto;
+        grid-template-areas: 'label . text';
+        padding:5px"
+      }
+      .detail-label {
+        grid-area: label;
+        align-self: center;
+        width: 40px;
+        height: 40px;
+        background-color: orange;
+        align-items: center;
+        justify-content: center
+      }
+      .detail-text {
+        grid-area: text;
+        align-self: center;
+      }
       .editor-imagen {
         background-color: lightseagreen;
         width: 600px;
@@ -99,14 +118,30 @@
         }
       }
 
-      class ManualDetail {
-        constructor(id) {
+      class ManualImagePointer {
+        constructor(id, data) {
           this.id = id;
-          this.content = '';
+          this.labelX = data.labelX;
+          this.labelY = data.labelY;
+          this.regionX = data.regionX;
+          this.regionY = data.regionY;
+          this.regionWidth = data.regionWidth;
+          this.regionHeight = data.regionHeight;
+          this.pinX = data.regionX + Math.floor(data.regionWidth / 2);
+          this.pinY = data.regionY + Math.floor(data.regionHeight / 2);
+          this.description = '';
           this.type = 'detail';
         }
-        update(newContent) {
-          this.content = newContent;
+        update(data) {
+          if (data.property === 'label') {
+            this.labelX = data.values[0];
+            this.labelY = data.values[1];
+          } else if (data.property === 'pin') {
+            this.pinX = data.values[0];
+            this.pinY = data.values[1];
+          } else if (data.property === 'description') {
+            this.description = data.values[0];
+          }
         }
       }
 
@@ -118,11 +153,14 @@
           this.items = [];
           this.type = 'image';
         }
-        addItem() {
-          const detail = new ManualDetail(`${this.id}.${this.nextItem}`);
+        addItem(data) {
+          const pointer = new ManualImagePointer(
+            `${this.id}.${this.nextItem}`,
+            data
+          );
           this.nextItem += 1;
-          this.items.push(detail);
-          return detail;
+          this.items.push(pointer);
+          return pointer;
         }
         deleteItem(index) {
           this.items.splice(index, 1);
@@ -217,9 +255,16 @@
           <div class="container" style="justify-content: flex-end">
             <button class="close" @click="deleteDetail">X</button>
           </div>
-          <div class="container">
-            <div style="width: 20px">{{index + 1}}</div>
-            <textarea rows="5" @change="updateDetail" v-model="content">
+          <div class="detail">
+            <div class="detail-label container">
+              {{index + 1}}
+            </div>
+            <textarea
+              class="detail-text"
+              rows="5"
+              v-model="content"
+              @change="updateDetail"
+            >
             </textarea>
           </div>
         </div>
@@ -238,16 +283,18 @@
             this.$emit('delete-item', this.id, this.index);
           },
           updateDetail() {
-            this.$emit('update-item', this.id, this.content);
+            this.$emit('update-item', this.id, {
+              property: 'description',
+              values: [this.content],
+            });
           },
         },
-        computed: {},
       });
 
       Vue.component('manual-selector', {
         template: `
           <div class="container" style="flex-direction: column">
-            
+
             <div class="container" style="justify-content: center">
               <input
                 :id="inputFileId"
@@ -258,17 +305,14 @@
                 @change="selectImage"
               >
               <label
-                :for="inputFileId"
                 class="button"
+                :for="inputFileId"
               >Select Image</label>
             </div>
           </div>
         `,
         props: {
           id: {type: String, required: true},
-        },
-        data() {
-          return {};
         },
         methods: {
           async selectImage() {
@@ -300,12 +344,91 @@
 
       Vue.component('manual-viewer', {
         template: `
-          <div id="editimg" class="editor-imagen">Hola
-            <svg id="svg" width="100%" height="100%">
-              <line x1="-5" y1="50" x2="605" y2="50" style="stroke: red;stroke-width:2" />
-              <line x1="-5" y1="350" x2="605" y2="350" style="stroke: red;stroke-width:2" />
-              <image width="600" height="300" y="50" xlink:href="https://www.caracteristicas.co/wp-content/uploads/2017/02/pato-2-e1560917879703.jpg" clip-path="url(#circleView)" />
-            </svg>
+          <div
+            class="container"
+            style="flex-wrap: nowrap; white-space: nowrap; overflow-x: auto;"
+          >
+            <div style="display: flex; margin-left: auto; margin-right: auto">
+              <img
+                :src="imagePath"
+                style="display: none"
+                ref="img"
+                @load="onLoadImg">
+              <svg
+                style="border: black solid 1px"
+                :width="fullWidth"
+                :height="fullHeight"
+              >
+                <image
+                  :xlink:href="imagePath"
+                  :x="borderLength"
+                  :y="borderLength"
+                  @mousedown="startRegionSelection"
+                  @mousemove="updateSelectedRegion"
+                  @mouseup="stopRegionSelection"
+                />
+                <line
+                  v-for="item in items"
+                  :x1="item.labelX + halfLength"
+                  :y1="item.labelY + halfLength"
+                  :x2="item.pinX"
+                  :y2="item.pinY"
+                  stroke="orange"
+                  stroke-width="2"
+                />
+                <rect
+                  v-for="item in items"
+                  :x="item.labelX"
+                  :y="item.labelY"
+                  :width="labelLength"
+                  :height="labelLength"
+                  fill="orange"
+                  @mousedown="startLabelDrag($event, item)"
+                  @mousemove="dragLabel($event, item)"
+                  @mouseup="stopLabelDrag"
+                  @mouseleave="stopLabelDrag"
+                />
+                <text
+                  v-for="(item, index) in items"
+                  :x="item.labelX + halfLength"
+                  :y="item.labelY  + halfLength"
+                  dominant-baseline="central"
+                  text-anchor="middle"
+                  fill="white"
+                  font-family="monospace"
+                  font-size="24px"
+                  @mousedown="startLabelDrag($event, item)"
+                  @mousemove="dragLabel($event, item)"
+                  @mouseup="stopLabelDrag"
+                  @mouseleave="stopLabelDrag"
+                >
+                  {{index + 1}}
+                </text>
+                <rect
+                  v-for="item in items"
+                  :x="item.regionX"
+                  :y="item.regionY"
+                  :width="item.regionWidth"
+                  :height="item.regionHeight"
+                  stroke="orange"
+                  fill-opacity="0"
+                  @mousedown="startLabelDrag($event, item)"
+                  @mousemove="dragLabel($event, item)"
+                  @mouseup="stopLabelDrag"
+                  @mouseleave="stopLabelDrag"
+                />
+                <rect
+                  v-show="isSelectingRegion"
+                  :x="regionX"
+                  :y="regionY"
+                  :width="regionWidth"
+                  :height="regionHeight"
+                  @mousemove="updateSelectedRegion"
+                  @mouseup="stopRegionSelection"
+                />
+                
+              </svg>
+            </div>
           </div>
         `,
         props: {
@@ -314,10 +437,172 @@
           items: {type: Array, required: true},
         },
         data() {
-          return {};
+          return {
+            pointers: [{x: 0, y: 0}],
+            labelLength: 30,
+            imageMargin: 40,
+            imageWidth: 0,
+            imageHeight: 0,
+            pointerActive: null,
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 0,
+            isSelectingRegion: false,
+          };
         },
-        methods: {},
-        computed: {},
+        methods: {
+          onLoadImg() {
+            const extra = 2 * this.borderLength;
+            this.imageWidth = this.$refs.img.width;
+            this.imageHeight = this.$refs.img.height;
+          },
+          startLabelDrag(event, pointer) {
+            this.pointerActive = pointer;
+            this.x = event.offsetX;
+            this.y = event.offsetY;
+          },
+          stopLabelDrag() {
+            this.pointerActive = null;
+          },
+          dragLabel(event, pointer) {
+            if (!this.pointerActive) {
+              return;
+            }
+            if (this.pointerActive !== pointer) {
+              this.pointerActive = null;
+            }
+            let newX = pointer.labelX + event.offsetX - this.x;
+            let newY = pointer.labelY + event.offsetY - this.y;
+            this.x = event.offsetX;
+            this.y = event.offsetY;
+            if (newX < 0) {
+              newX = 0;
+            } else if (newX > this.maxX) {
+              newX = this.maxX;
+            }
+            if (newY < 0) {
+              newY = 0;
+            } else if (newY > this.maxY) {
+              newY = this.maxY;
+            }
+            const marginLeft = newX;
+            const marginTop = newY;
+            const marginRight = this.fullWidth - newX - this.labelLength;
+            const marginBottom = this.fullHeight - newY - this.labelLength;
+            const minMargin = Math.min(
+              marginLeft,
+              marginTop,
+              marginRight,
+              marginBottom
+            );
+            if (marginLeft === minMargin) {
+              newX = 0;
+            } else if (marginTop === minMargin) {
+              newY = 0;
+            } else if (marginRight === minMargin) {
+              newX = this.maxX;
+            } else {
+              newY = this.maxY;
+            }
+            this.$emit('update-item', pointer.id, {
+              property: 'label',
+              values: [newX, newY],
+            });
+          },
+          startRegionSelection(event) {
+            this.isSelectingRegion = true;
+            this.x = event.offsetX;
+            this.y = event.offsetY;
+          },
+          updateSelectedRegion(event) {
+            this.x2 = event.offsetX;
+            this.y2 = event.offsetY;
+          },
+          stopRegionSelection() {
+            if (this.isSelectingRegion) {
+              const marginLeft = this.regionX;
+              const marginTop = this.regionY;
+              const marginRight =
+                this.fullWidth - this.regionX - this.regionWidth;
+              const marginBottom =
+                this.fullHeight - this.regionY - this.regionHeight;
+              const minMargin = Math.min(
+                marginLeft,
+                marginTop,
+                marginRight,
+                marginBottom
+              );
+              let labelX;
+              let labelY;
+              if (marginLeft === minMargin) {
+                labelX = 0;
+                labelY =
+                  this.regionY +
+                  Math.floor((this.regionHeight - this.labelLength) / 2);
+              } else if (marginTop === minMargin) {
+                labelX =
+                  this.regionX +
+                  Math.floor((this.regionWidth - this.labelLength) / 2);
+                labelY = 0;
+              } else if (marginRight === minMargin) {
+                labelX = this.maxX;
+                labelY =
+                  this.regionY +
+                  Math.floor((this.regionHeight - this.labelLength) / 2);
+              } else {
+                labelX =
+                  this.regionX +
+                  Math.floor((this.regionWidth - this.labelLength) / 2);
+                labelY = this.maxY;
+              }
+              this.$emit('add-item', this.id, {
+                labelX,
+                labelY,
+                regionX: this.regionX,
+                regionY: this.regionY,
+                regionWidth: this.regionWidth,
+                regionHeight: this.regionHeight,
+              });
+              this.isSelectingRegion = false;
+            }
+          },
+        },
+        computed: {
+          imagePath() {
+            return `./images/${this.name}`;
+          },
+          borderLength() {
+            return this.labelLength + this.imageMargin;
+          },
+          fullWidth() {
+            return this.imageWidth + 2 * this.borderLength;
+          },
+          fullHeight() {
+            return this.imageHeight + 2 * this.borderLength;
+          },
+          maxX() {
+            return this.fullWidth - this.labelLength;
+          },
+          maxY() {
+            return this.fullHeight - this.labelLength;
+          },
+          regionX() {
+            return Math.min(this.x, this.x2);
+          },
+          regionY() {
+            return Math.min(this.y, this.y2);
+          },
+          regionWidth() {
+            return Math.abs(this.x - this.x2);
+          },
+          regionHeight() {
+            return Math.abs(this.y - this.y2);
+          },
+          halfLength() {
+            return Math.floor(this.labelLength / 2);
+          },
+        },
       });
 
       Vue.component('manual-image', {
@@ -336,14 +621,15 @@
             >
             </manual-selector>
             <manual-viewer
-              v-show="isSelected"
+              v-else="isSelected"
               :id="id"
               :name="name"
               :items="items"
+              @add-item="addItem"
               @update-item="updateItem"
             >
             </manual-viewer>
-            <manual-detail 
+            <manual-detail
               v-for="(item, index) in items"
               :id="item.id"
               :key="item.id"
@@ -364,14 +650,14 @@
           return {};
         },
         methods: {
-          addItem(type, parentId) {
-            this.$emit('add-item', type, parentId);
+          addItem(parentId, data) {
+            this.$emit('add-item', parentId, data);
           },
           deleteItem(id, index) {
             this.$emit('delete-item', id, index);
           },
-          updateItem(id, value) {
-            this.$emit('update-item', id, value);
+          updateItem(id, data) {
+            this.$emit('update-item', id, data);
           },
         },
         computed: {
@@ -390,51 +676,51 @@
             <div class="title">
               <label class="title-label" :for="titleId">Title:</label>
               <input
-                type="text"
-                class="title-text"
                 :id="titleId"
+                class="title-text"
+                type="text"
                 v-model="title"
                 @change="updateItem(id, title)">
             </div>
             <template v-for="(item, index) in items">
               <manual-section
-                :items="item.items"
+                v-if = "item.type === 'section'"
                 :id="item.id"
                 :key="item.id"
                 :index="index"
+                :items="item.items"
                 @add-item="addItem"
                 @delete-item="deleteItem"
                 @update-item="updateItem"
-                v-if = "item.type === 'section'"
               ></manual-section>
               <manual-paragraph
+                v-else-if = "item.type === 'paragraph'"
                 :id="item.id"
                 :key="item.id"
                 :index="index"
                 @delete-item="deleteItem"
                 @update-item="updateItem"
-                v-else-if = "item.type === 'paragraph'"
               ></manual-paragraph>
               <manual-image
-                :items="item.items"
+                v-else-if = "item.type === 'image'"
                 :id="item.id"
                 :key="item.id"
-                :name="item.name"
                 :index="index"
+                :items="item.items"
+                :name="item.name"
                 @add-item="addItem"
                 @delete-item="deleteItem"
                 @update-item="updateItem"
-                v-else-if = "item.type === 'image'"
               ></manual-image>
             </template>
             <div class="container" style="justify-content: center">
-              <button @click="addItem('paragraph', id)">
+              <button @click="addItem(id, 'paragraph')">
                 Add Paragraph
               </button>
-              <button @click="addItem('image', id)">
+              <button @click="addItem(id, 'image')">
                 Add Image
               </button>
-              <button @click="addItem('section', id)">
+              <button @click="addItem(id, 'section')">
                 Add Subsection
               </button>
             </div>
@@ -449,14 +735,14 @@
           return {title: ''};
         },
         methods: {
-          addItem(type, parentId) {
-            this.$emit('add-item', type, parentId);
+          addItem(parentId, data) {
+            this.$emit('add-item', parentId, data);
           },
           deleteItem(id, index) {
             this.$emit('delete-item', id, index);
           },
-          updateItem(id, value) {
-            this.$emit('update-item', id, value);
+          updateItem(id, data) {
+            this.$emit('update-item', id, data);
           },
         },
         computed: {
@@ -473,9 +759,9 @@
           allItems: {},
         },
         methods: {
-          addItem(type, parentId) {
+          addItem(parentId, data) {
             const parent = this.allItems[parentId];
-            const newItem = parent.addItem(type);
+            const newItem = parent.addItem(data);
             this.allItems[newItem.id] = newItem;
           },
           addSection() {
@@ -510,9 +796,9 @@
             parent.deleteItem(index);
             delete this.allItems[id];
           },
-          updateItem(id, value) {
+          updateItem(id, data) {
             const item = this.allItems[id];
-            item.update(value);
+            item.update(data);
           },
         },
       });
