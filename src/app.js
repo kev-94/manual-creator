@@ -68,6 +68,8 @@ app.post(
   async (req, res, next) => {
     try {
       const {imageName} = req.params;
+      console.log(imageName);
+      console.log(req.query);
       const left = parseInt(req.query.left, 10);
       const top = parseInt(req.query.top, 10);
       const width = parseInt(req.query.width, 10);

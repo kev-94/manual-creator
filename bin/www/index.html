@@ -41,8 +41,8 @@
       }
       .detail {
         display: grid;
-        grid-template-columns: 40px 10px auto;
-        grid-template-areas: 'label . text';
+        grid-template-columns: 40px 10px 100px 10px auto;
+        grid-template-areas: 'label . image . text';
         padding:5px"
       }
       .detail-label {
@@ -127,8 +127,10 @@
           this.regionY = data.regionY;
           this.regionWidth = data.regionWidth;
           this.regionHeight = data.regionHeight;
-          this.pinX = data.regionX + Math.floor(data.regionWidth / 2);
-          this.pinY = data.regionY + Math.floor(data.regionHeight / 2);
+          this.pinX = data.pinX;
+          this.pinY = data.pinY;
+          this.name = '';
+          this.image = data.image;
           this.description = '';
           this.type = 'detail';
         }
@@ -139,6 +141,10 @@
           } else if (data.property === 'pin') {
             this.pinX = data.values[0];
             this.pinY = data.values[1];
+          } else if (data.property === 'name') {
+            this.name = data.values[0];
+          } else if (data.property === 'image') {
+            this.image = data.values[0];
           } else if (data.property === 'description') {
             this.description = data.values[0];
           }
@@ -255,15 +261,25 @@
           <div class="container" style="justify-content: flex-end">
             <button class="close" @click="deleteDetail">X</button>
           </div>
+            <div class="title" style="grid-template-columns: 45px 5px auto;">
+              <label class="title-label" :for="titleId">Name:</label>
+              <input
+                :id="titleId"
+                class="title-text"
+                type="text"
+                v-model="name"
+                @change="updateName">
+            </div>
           <div class="detail">
             <div class="detail-label container">
               {{index + 1}}
             </div>
+            <img :src="imagePath" width="100px" style="grid-area: image; align-self: center" >
             <textarea
               class="detail-text"
               rows="5"
               v-model="content"
-              @change="updateDetail"
+              @change="updateDescription"
             >
             </textarea>
           </div>
@@ -272,21 +288,39 @@
         props: {
           id: {type: String, required: true},
           index: {type: Number, required: true},
+          eventBus: {type: Object, required: true},
+          image: {type: String, required: true},
         },
         data() {
           return {
+            name: '',
             content: '',
           };
         },
         methods: {
           deleteDetail() {
             this.$emit('delete-item', this.id, this.index);
+            this.eventBus.$emit('delete-detail', this.index);
           },
-          updateDetail() {
+          updateDescription() {
             this.$emit('update-item', this.id, {
               property: 'description',
               values: [this.content],
             });
+          },
+          updateName() {
+            this.$emit('update-item', this.id, {
+              property: 'name',
+              values: [this.name],
+            });
+          },
+        },
+        computed: {
+          titleId() {
+            return 'detail-title' + this.id;
+          },
+          imagePath() {
+            return `./images/${this.image}`;
           },
         },
       });
@@ -353,9 +387,9 @@
                 :src="imagePath"
                 style="display: none"
                 ref="img"
-                @load="onLoadImg">
+                @load="determineSize">
               <svg
-                style="border: black solid 1px"
+                style="box-sizing: content-box; border: black solid 1px"
                 :width="fullWidth"
                 :height="fullHeight"
               >
@@ -367,43 +401,6 @@
                   @mousemove="updateSelectedRegion"
                   @mouseup="stopRegionSelection"
                 />
-                <line
-                  v-for="item in items"
-                  :x1="item.labelX + halfLength"
-                  :y1="item.labelY + halfLength"
-                  :x2="item.pinX"
-                  :y2="item.pinY"
-                  stroke="orange"
-                  stroke-width="2"
-                />
-                <rect
-                  v-for="item in items"
-                  :x="item.labelX"
-                  :y="item.labelY"
-                  :width="labelLength"
-                  :height="labelLength"
-                  fill="orange"
-                  @mousedown="startLabelDrag($event, item)"
-                  @mousemove="dragLabel($event, item)"
-                  @mouseup="stopLabelDrag"
-                  @mouseleave="stopLabelDrag"
-                />
-                <text
-                  v-for="(item, index) in items"
-                  :x="item.labelX + halfLength"
-                  :y="item.labelY  + halfLength"
-                  dominant-baseline="central"
-                  text-anchor="middle"
-                  fill="white"
-                  font-family="monospace"
-                  font-size="24px"
-                  @mousedown="startLabelDrag($event, item)"
-                  @mousemove="dragLabel($event, item)"
-                  @mouseup="stopLabelDrag"
-                  @mouseleave="stopLabelDrag"
-                >
-                  {{index + 1}}
-                </text>
                 <rect
                   v-for="item in items"
                   :x="item.regionX"
@@ -411,11 +408,56 @@
                   :width="item.regionWidth"
                   :height="item.regionHeight"
                   stroke="orange"
+                  stroke-width="1"
                   fill-opacity="0"
-                  @mousedown="startLabelDrag($event, item)"
-                  @mousemove="dragLabel($event, item)"
-                  @mouseup="stopLabelDrag"
-                  @mouseleave="stopLabelDrag"
+                />
+                <line
+                  v-for="(item, index) in items"
+                  :x1="pointers[index].x + halfLength"
+                  :y1="pointers[index].y + halfLength"
+                  :x2="pointers[index].cx"
+                  :y2="pointers[index].cy"
+                  stroke="orange"
+                  stroke-width="2" stroke-linecap="round" stroke-dasharray="0, 6"
+                  stroke-dashoffset="100"
+                />
+                <g
+                  v-for="(item, index) in items"
+                  @mousedown="startLabelDrag"
+                  @mousemove="dragLabel($event, index)"
+                  @mouseup="stopLabelDrag(index)"
+                  @mouseleave="stopLabelDrag(index)"
+                >
+                  <rect
+                    :x="pointers[index].x"
+                    :y="pointers[index].y"
+                    :width="labelLength"
+                    :height="labelLength"
+                    fill="orange"
+                  />
+                  <text
+                    :x="pointers[index].x + halfLength"
+                    :y="pointers[index].y + halfLength"
+                    dominant-baseline="central"
+                    text-anchor="middle"
+                    fill="white"
+                    font-family="monospace"
+                    font-size="24px"
+                    style="pointer-events: none; user-select:none"
+                  >
+                    {{index + 1}}
+                  </text>
+                </g>
+                <circle
+                  v-for="(item, index) in items"
+                  :cx="pointers[index].cx"
+                  :cy="pointers[index].cy"
+                  :r="pinRadius"
+                  fill="orange"
+                  @mousedown="startPinDrag"
+                  @mousemove="dragPin($event, index)"
+                  @mouseup="stopPinDrag(index)"
+                  @mouseleave="stopPinDrag(index)"
                 />
                 <rect
                   v-show="isSelectingRegion"
@@ -423,10 +465,13 @@
                   :y="regionY"
                   :width="regionWidth"
                   :height="regionHeight"
+                  stroke="orange"
+                  stroke-width="1"
+                  fill-opacity="0"
                   @mousemove="updateSelectedRegion"
                   @mouseup="stopRegionSelection"
                 />
-                
+
               </svg>
             </div>
           </div>
@@ -435,47 +480,46 @@
           id: {type: String, required: true},
           name: {type: String, required: true},
           items: {type: Array, required: true},
+          eventBus: {type: Object, required: true},
         },
         data() {
           return {
-            pointers: [{x: 0, y: 0}],
+            pointers: [],
             labelLength: 30,
             imageMargin: 40,
+            pinRadius: 3,
             imageWidth: 0,
             imageHeight: 0,
-            pointerActive: null,
-            x: 0,
-            y: 0,
+            isDraggingLabel: false,
+            isDraggingPin: false,
+            isSelectingRegion: false,
+            x1: 0,
+            y1: 0,
             x2: 0,
             y2: 0,
-            isSelectingRegion: false,
           };
         },
+        created() {
+          this.eventBus.$on(
+            'delete-detail',
+            function (index) {
+              this.pointers.splice(index, 1);
+            }.bind(this)
+          );
+        },
         methods: {
-          onLoadImg() {
-            const extra = 2 * this.borderLength;
+          determineSize() {
             this.imageWidth = this.$refs.img.width;
             this.imageHeight = this.$refs.img.height;
           },
-          startLabelDrag(event, pointer) {
-            this.pointerActive = pointer;
-            this.x = event.offsetX;
-            this.y = event.offsetY;
-          },
-          stopLabelDrag() {
-            this.pointerActive = null;
-          },
-          dragLabel(event, pointer) {
-            if (!this.pointerActive) {
+          dragLabel(event, index) {
+            if (!this.isDraggingLabel) {
               return;
             }
-            if (this.pointerActive !== pointer) {
-              this.pointerActive = null;
-            }
-            let newX = pointer.labelX + event.offsetX - this.x;
-            let newY = pointer.labelY + event.offsetY - this.y;
-            this.x = event.offsetX;
-            this.y = event.offsetY;
+            let newX = this.pointers[index].x + event.offsetX - this.x1;
+            let newY = this.pointers[index].y + event.offsetY - this.y1;
+            this.x1 = event.offsetX;
+            this.y1 = event.offsetY;
             if (newX < 0) {
               newX = 0;
             } else if (newX > this.maxX) {
@@ -505,21 +549,68 @@
             } else {
               newY = this.maxY;
             }
-            this.$emit('update-item', pointer.id, {
-              property: 'label',
-              values: [newX, newY],
-            });
+            this.pointers[index].x = newX;
+            this.pointers[index].y = newY;
+          },
+          startLabelDrag(event) {
+            this.isDraggingLabel = true;
+            this.x1 = event.offsetX;
+            this.y1 = event.offsetY;
+          },
+          stopLabelDrag(index) {
+            if (this.isDraggingLabel) {
+              this.$emit('update-item', this.items[index].id, {
+                property: 'label',
+                values: [this.pointers[index].x, this.pointers[index].y],
+              });
+              this.isDraggingLabel = false;
+            }
+          },
+          dragPin(event, index) {
+            if (!this.isDraggingPin) {
+              return;
+            }
+            let newCX = this.pointers[index].cx + event.offsetX - this.x1;
+            let newCY = this.pointers[index].cy + event.offsetY - this.y1;
+            this.x1 = event.offsetX;
+            this.y1 = event.offsetY;
+            if (newCX < this.minPin) {
+              newCX = this.minPin;
+            } else if (newCX > this.maxPinX) {
+              newCX = this.maxPinX;
+            }
+            if (newCY < this.minPin) {
+              newCY = this.minPin;
+            } else if (newCY > this.maxPinY) {
+              newCY = this.maxPinY;
+            }
+            this.pointers[index].cx = newCX;
+            this.pointers[index].cy = newCY;
+          },
+          startPinDrag(event) {
+            this.isDraggingPin = true;
+            this.x1 = event.offsetX;
+            this.y1 = event.offsetY;
+          },
+          stopPinDrag(index) {
+            if (this.isDraggingPin) {
+              this.$emit('update-item', this.items[index].id, {
+                property: 'pin',
+                values: [this.pointers[index].cx, this.pointers[index].cy],
+              });
+              this.isDraggingPin = false;
+            }
           },
           startRegionSelection(event) {
             this.isSelectingRegion = true;
-            this.x = event.offsetX;
-            this.y = event.offsetY;
+            this.x1 = event.offsetX;
+            this.y1 = event.offsetY;
           },
           updateSelectedRegion(event) {
             this.x2 = event.offsetX;
             this.y2 = event.offsetY;
           },
-          stopRegionSelection() {
+          async stopRegionSelection() {
             if (this.isSelectingRegion) {
               const marginLeft = this.regionX;
               const marginTop = this.regionY;
@@ -556,14 +647,47 @@
                   Math.floor((this.regionWidth - this.labelLength) / 2);
                 labelY = this.maxY;
               }
-              this.$emit('add-item', this.id, {
-                labelX,
-                labelY,
-                regionX: this.regionX,
-                regionY: this.regionY,
-                regionWidth: this.regionWidth,
-                regionHeight: this.regionHeight,
-              });
+              if (
+                this.regionWidth >= this.regionMinLength &&
+                this.regionHeight >= this.regionMinLength
+              ) {
+                const pinX = this.regionX + Math.floor(this.regionWidth / 2);
+                const pinY = this.regionY + Math.floor(this.regionHeight / 2);
+                try {
+                  const response = await axios.post(
+                    this.cropPath,
+                    {},
+                    {
+                      params: {
+                        left: this.regionX - this.borderLength,
+                        top: this.regionY - this.borderLength,
+                        width: this.regionWidth,
+                        height: this.regionHeight,
+                      },
+                    }
+                  );
+                  const image = response.data.name;
+                  this.$emit('add-item', this.id, {
+                    labelX,
+                    labelY,
+                    regionX: this.regionX,
+                    regionY: this.regionY,
+                    regionWidth: this.regionWidth,
+                    regionHeight: this.regionHeight,
+                    pinX,
+                    pinY,
+                    image,
+                  });
+                  this.pointers.push({
+                    x: labelX,
+                    y: labelY,
+                    cx: pinX,
+                    cy: pinY,
+                  });
+                } catch (error) {
+                  console.log(error);
+                }
+              }
               this.isSelectingRegion = false;
             }
           },
@@ -571,6 +695,9 @@
         computed: {
           imagePath() {
             return `./images/${this.name}`;
+          },
+          cropPath() {
+            return `/crop/${this.name}`;
           },
           borderLength() {
             return this.labelLength + this.imageMargin;
@@ -588,19 +715,31 @@
             return this.fullHeight - this.labelLength;
           },
           regionX() {
-            return Math.min(this.x, this.x2);
+            return Math.min(this.x1, this.x2);
           },
           regionY() {
-            return Math.min(this.y, this.y2);
+            return Math.min(this.y1, this.y2);
           },
           regionWidth() {
-            return Math.abs(this.x - this.x2);
+            return Math.abs(this.x1 - this.x2);
           },
           regionHeight() {
-            return Math.abs(this.y - this.y2);
+            return Math.abs(this.y1 - this.y2);
           },
           halfLength() {
             return Math.floor(this.labelLength / 2);
+          },
+          regionMinLength() {
+            return this.pinRadius * 6;
+          },
+          minPin() {
+            return this.borderLength + this.pinRadius;
+          },
+          maxPinX() {
+            return this.fullWidth - this.minPin;
+          },
+          maxPinY() {
+            return this.fullHeight - this.minPin;
           },
         },
       });
@@ -625,6 +764,7 @@
               :id="id"
               :name="name"
               :items="items"
+              :eventBus="eventBus"
               @add-item="addItem"
               @update-item="updateItem"
             >
@@ -634,6 +774,8 @@
               :id="item.id"
               :key="item.id"
               :index="index"
+              :eventBus="eventBus"
+              :image="item.image"
               @delete-item="deleteItem"
               @update-item="updateItem"
             >
@@ -647,7 +789,9 @@
           index: {type: Number, required: true},
         },
         data() {
-          return {};
+          return {
+            eventBus: new Vue(),
+          };
         },
         methods: {
           addItem(parentId, data) {
